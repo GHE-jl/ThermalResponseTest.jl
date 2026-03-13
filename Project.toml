@@ -1,7 +1,7 @@
 name = "ThermalResponseTest"
 uuid = "82e3c90c-d826-4d41-a540-35413cb226da"
+authors = ["Gabriel-Dion <dion.gabriel100@gmail.com>"]
 version = "1.0.0-DEV"
-authors = ["Gabriel-Dion <dion.gabriel100@gmail.com> and contributors"]
 
 [deps]
 Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
