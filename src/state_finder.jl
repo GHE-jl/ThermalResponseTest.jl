@@ -8,8 +8,8 @@ to help interprete noisy signal into constant values based on average abrupt cha
 Note: The k-means algorithm used to idenfity the changes can be unstable when too few steps are
 used.
 # Arguments
-    - x: A vector
-    - steps: The number of constant steps wanted in the output step-constant signal
+    - `x`: A vector
+    - `steps`: The number of constant steps wanted in the output step-constant signal
 # Output
     - A step-constant signal
 """
