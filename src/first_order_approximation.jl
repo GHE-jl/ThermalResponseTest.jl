@@ -1,6 +1,5 @@
 using LinearAlgebra
 using DataFrames: AbstractDataFrame
-include("utils.jl")
 
 """
     fit_ils_foa_T(t, T, q, r_b, Cs)
@@ -94,6 +93,67 @@ end
 function fit_ils_foa_T(trt::AbstractDataFrame, H::Real, rb::Real, Cs::Real)
     q = trt.power ./ H                      # Convert total power to power per unit length
     return fit_ils_foa_T(trt.elapsed_time, trt.T_mean, q, rb, Cs)
+end
+
+"""
+    fit_ils_foa_T_recovery(t, T, q, t̄)
+    fit_ils_foa_T_recovery(dataset::TRTDataset, H)
+
+Fit the unconstrained first order approximation (FOA) of the infinite line source (ILS) to the
+temperature measured during the **recovery phase** of a thermal response test, after the heating
+power has been switched off while circulation continues. This is the UFOA-T-R method described in
+Pasquier (2018) (Eq. 13).
+
+Setting a null heating power for `t > t̄` (with `t̄` the heating phase duration) and applying the
+ILS superposition principle, the recovery-phase fluid temperature simplifies to
+`Tf(t) = T₀ + q/(4π·k)·ln(t / (t - t̄))`. A linear regression of `T` against
+`x = ln(t / (t - t̄))` then has slope `m = q/(4π·k)` and intercept `T₀`, so the ground thermal
+conductivity is `k = q / (4π·m)`. Unlike the heating-phase method, the recovery phase carries no
+information on the borehole resistance.
+# Arguments
+    - `t`: Time vector measured from the **start of heating** [s] (recovery portion, `t > t̄`)
+    - `T`: Mean fluid temperature during recovery [°C]
+    - `q`: Mean heat injection rate per borehole length during heating (Q/H) [W/m] (scalar)
+    - `t̄`: Heating phase duration [s]
+    - `dataset`: `TRTDataset` from `decompose_trt` (heating + cooling phases)
+    - `H`: Borehole depth [m]
+# Output
+    - `k`: Estimated effective thermal conductivity [W/mK]
+    - `T0`: Estimated undisturbed ground temperature (regression intercept) [°C]
+    - `reg`: Matrix [N, 2] with the time and fitted temperature from the FOA regression
+    - `indices`: Indices of the recovery data points used in the regression
+# Reference
+    - Pasquier, P. (2018). Interpretation of the first hours of a thermal response test using the
+        time derivative of the temperature. Applied Energy, 213, 56–75.
+        https://doi.org/10.1016/j.apenergy.2018.01.022
+"""
+function fit_ils_foa_T_recovery(t::AbstractVector{<:Real}, T::AbstractVector{<:Real},
+    q::Real, t̄::Real)
+    # Regression variable x = ln(t / (t - t̄)); valid only strictly after heating stops.
+    indices = findall(tᵢ -> tᵢ > t̄, t)
+    if length(indices) < 5
+        throw(ArgumentError("Not enough recovery data points (t > t̄) for UFOA-T-R."))
+    end
+    x = log.(view(t, indices) ./ (view(t, indices) .- t̄))
+    X = [x ones(length(x))]
+    y = view(T, indices)
+    coef = X \ y
+    slope, intercept = coef                 # slope = q/(4π·k), intercept = T₀
+
+    k = q / (4 * pi * slope)
+    if !isfinite(k) || k <= 0
+        throw(ArgumentError("UFOA-T-R produced a non-physical thermal conductivity estimate."))
+    end
+    T0 = intercept
+
+    reg = hcat(t[indices], slope .* x .+ intercept)
+    return k, T0, reg, indices
+end
+function fit_ils_foa_T_recovery(dataset::TRTDataset, H::Real)
+    nrow(dataset.cooling) > 0 || throw(ArgumentError("Dataset has no recovery (cooling) phase."))
+    t̄ = dataset.heating.elapsed_time[end]                       # heating duration
+    q = (sum(dataset.heating.power) / nrow(dataset.heating)) / H  # mean heating power per length
+    return fit_ils_foa_T_recovery(dataset.cooling.elapsed_time, dataset.cooling.T_mean, q, t̄)
 end
 
 """

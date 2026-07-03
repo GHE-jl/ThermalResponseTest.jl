@@ -11,7 +11,8 @@ estimate of the effective temperature driving the heat transfer in the borehole.
 # Arguments
     - `T_in`: Inlet temperature (°C)
     - `T_out`: Outlet temperature (°C)
-    - `p`: Exponent for p-linear mean (only used if method=:pLinear). Default is -1.0000000001.
+    - `p`: Exponent of the p-linear mean for the numeric method (required for that method). The
+        `:pLinear` symbol corresponds to `p = -1.0000000001`.
     - `method`: Method to calculate mean temperature. Options are:
         - `:arithmetic` -> p = 1: (T_in + T_out) / 2 (default)
         - `:logarithmic` -> p = 0: (T_out - T_in) / log(T_out / T_in)
@@ -26,7 +27,7 @@ estimate of the effective temperature driving the heat transfer in the borehole.
         https://doi.org/10.1016/j.renene.2008.01.021
 """
 function mean_fluid_temperature(T_in::AbstractVector{<:Real}, T_out::AbstractVector{<:Real},
-    p = -1.0000000001)
+    p::Real)
     function _plinear(Tin, Tout)
         Δ = abs(Tin - Tout)
         scale = max(abs(Tin), abs(Tout))
