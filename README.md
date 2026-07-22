@@ -9,12 +9,12 @@ families of methods:
    line source, following Pasquier (2018): on the heating phase, the recovery phase, and the time
    derivative of the heating phase.
 2. **Model inversion** — least-squares fitting of any
-   [GroundResponse.jl](https://github.com/GeothermalJL/GroundResponse.jl) ground model (ILS, ICS,
+   [GroundResponse.jl](https://github.com/GHE-jl/GroundResponse.jl) ground model (ILS, ICS,
    FLS, MILS, MFLS) with [Optimization.jl](https://github.com/SciML/Optimization.jl) (Optim.jl
    backend), with the ground conductivity as the main unknown.
 
-`ThermalResponseTest.jl` is the interpretation layer of the GeothermalJL ecosystem: it depends on
-[GroundHeatExchanger.jl](https://github.com/GeothermalJL/GroundHeatExchanger.jl), which re-exports
+`ThermalResponseTest.jl` is the interpretation layer of the GHE-jl ecosystem: it depends on
+[GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl), which re-exports
 the GroundResponse.jl ground models and the temporal-superposition `convolution` that the inversions
 are built on.
 
@@ -123,7 +123,7 @@ Each script saves its figure to `script/figures/`.
 
 ## Installation
 
-The GeothermalJL packages are not yet registered. Clone the ecosystem packages side by side and
+The GHE-jl packages are not yet registered. Clone the ecosystem packages side by side and
 develop them locally:
 
 ```julia
@@ -141,7 +141,7 @@ Pkg.instantiate()
 
 | Package | Used for |
 |---|---|
-| [GroundHeatExchanger.jl](https://github.com/GeothermalJL/GroundHeatExchanger.jl) | Ground models (re-exported from GroundResponse.jl) and temporal-superposition `convolution` |
+| [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl) | Ground models (re-exported from GroundResponse.jl) and temporal-superposition `convolution` |
 | [Optimization.jl](https://github.com/SciML/Optimization.jl) / [OptimizationOptimJL.jl](https://github.com/SciML/Optimization.jl) | Bounded least-squares model inversion |
 | [FiniteDiff.jl](https://github.com/JuliaDiff/FiniteDiff.jl) | Finite-difference gradients for the inversion |
 | [CSV.jl](https://github.com/JuliaData/CSV.jl) / [DataFrames.jl](https://github.com/JuliaData/DataFrames.jl) | TRT data loading and handling |
