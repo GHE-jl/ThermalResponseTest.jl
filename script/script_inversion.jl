@@ -1,81 +1,76 @@
-"""
-Model inversion of a thermal response test with Optimization.jl (Optim.jl backend). The ground
-thermal conductivity `k` is the main unknown for every model; the moving models (MILS, MFLS) also
-recover the groundwater Darcy velocity `vD`. Each model is fitted by superimposing the measured load
-with the corresponding GroundResponse.jl g-function (Eq. 1 of Pasquier 2018).
+# Model inversion of a thermal response test using `fit_ground_response` directly, called once per
+# ground model so it's clear what goes into each one. Every model is fitted by superimposing the
+# measured load with its GroundResponse.jl g-function (Eq. 1 of Pasquier 2018).
 
-Run from the package root:
-    julia --project=script script/script_inversion.jl
-"""
+import Pkg; Pkg.activate(@__DIR__)
+# Pkg.instantiate() # Once per computer
 
 using ThermalResponseTest
-using GroundHeatExchanger          # ils, ics, fls, mils, mfls and convolution (for the fitted curves)
+using GroundHeatExchanger
+using DataFrames
 using CairoMakie
 
-# --- Load and decompose ----------------------------------------------------------------
-datafile = joinpath(@__DIR__, "..", "trt_data", "DataCL_TRT.csv")
+# Load and decompose a thermal response test
+datafile = joinpath(@__DIR__, "..", "data", "TRT_CL_Num.csv")
 trt = load_trt_data(datafile)
 dataset = decompose_trt(trt)
 
-# --- Parameters ------------------------------------------------------------------------
-H  = 138.0          # borehole depth [m]
-D  = 4.0            # buried depth [m]
+# Borehole / ground parameters
+H  = 150.0          # borehole depth [m]
+D  = 0.0            # buried depth [m]
 rb = 0.075          # borehole radius [m]
 Cs = 2.0e6          # ground volumetric heat capacity [J/m³K]
 Cf = 4.2e6          # groundwater volumetric heat capacity [J/m³K]
 T0 = trt.T_mean[1]  # undisturbed ground temperature [°C]
 
-# Decimate the heating phase uniformly (keeps the equal time spacing the superposition needs)
-# so the quadrature-based models (FLS, MFLS) stay fast in the optimization loop.
-heating = dataset.heating
-step = max(1, fld(nrow(heating), 400))
-h = heating[1:step:nrow(heating), :]
-t = collect(Float64, h.elapsed_time)
-T = collect(Float64, h.T_mean)
-q = collect(Float64, h.power ./ H)
+t = dataset.data.elapsed_time
+T = dataset.data.T_mean
+q = dataset.data.power / H
 
-# Helper to rebuild the fitted mean fluid temperature from a g-function vector.
-predict(g, Rb) = T0 .+ Rb .* q .+ convolution(q, g)
+# Fit each ground model.
+@time ils  = fit_ground_response(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
+@time ics  = fit_ground_response(t, T, q, rb, T0, p -> ICSModel(rb, p[1], Cs), [2.5], [0.2], [7.0])
+@time fls  = fit_ground_response(t, T, q, rb, T0, p -> FLSModel(H, D, p[1], Cs), [2.5], [0.2], [7.0])
+@time mils = fit_ground_response(t, T, q, rb, T0, p -> MILSModel(rb, p[1], Cs, Cf, p[2]),
+    [2.5, 1e-7], [0.2, 1e-9], [7.0, 1e-5])
+@time mfls = fit_ground_response(t, T, q, rb, T0, p -> MFLSModel(H, rb, D, p[1], Cs, Cf, p[2]),
+    [2.5, 1e-7], [0.2, 1e-9], [7.0, 1e-5])
 
-# --- Run every model inversion ---------------------------------------------------------
-println("Inverting the TRT ($(length(t)) samples) with each ground model ...\n")
+# Reconstruct each fitted temperature profile
+T_ils = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], ils.model), T0, ils.Rbₑ)
+T_ics = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], ics.model), T0, ics.Rbₑ)
+T_fls = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], fls.model), T0, fls.Rbₑ)
+T_mils = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], mils.model), T0, mils.Rbₑ)
+T_mfls = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], mfls.model), T0, mfls.Rbₑ)
 
-r_ils  = fit_ils(t, T, q, rb, T0, Cs)
-g_ils  = predict(ils(t, rb, r_ils.k, Cs), r_ils.Rb)
-println("ILS  : k = $(round(r_ils.k,  digits=3)) W/mK,  Rb = $(round(r_ils.Rb,  digits=4)) mK/W")
+# Summary table — one row per model.
+rmse(T_fit) = sqrt(sum(abs2, T_fit .- T) / length(T))
 
-r_ics  = fit_ics(t, T, q, rb, T0, Cs)
-g_ics  = predict(ics(t, rb, rb, r_ics.k, Cs), r_ics.Rb)
-println("ICS  : k = $(round(r_ics.k,  digits=3)) W/mK,  Rb = $(round(r_ics.Rb,  digits=4)) mK/W")
+summary_df = DataFrame(
+    Model = ["ILS", "ICS", "FLS", "MILS", "MFLS"],
+    k = round.([ils.params[1], ics.params[1], fls.params[1], mils.params[1], mfls.params[1]],
+        digits = 4),
+    Rbₑ = round.([ils.Rbₑ, ics.Rbₑ, fls.Rbₑ, mils.Rbₑ, mfls.Rbₑ], digits = 5),
+    vD = [missing, missing, missing, round(mils.params[2], digits = 3), round(mfls.params[2], 
+        digits = 3)],
+    RMSE = round.([rmse(T_ils), rmse(T_ics), rmse(T_fls), rmse(T_mils), rmse(T_mfls)], digits = 4),
+)
+println(summary_df)
 
-r_fls  = fit_fls(t, T, q, rb, H, D, T0, Cs)
-g_fls  = predict(fls(t, rb, H, D, r_fls.k, Cs), r_fls.Rb)
-println("FLS  : k = $(round(r_fls.k,  digits=3)) W/mK,  Rb = $(round(r_fls.Rb,  digits=4)) mK/W")
-
-r_mils = fit_mils(t, T, q, rb, T0, Cs, Cf)
-g_mils = predict(mils(t, [0.0, 0.0], rb, r_mils.k, Cs, Cf, r_mils.vD), r_mils.Rb)
-println("MILS : k = $(round(r_mils.k, digits=3)) W/mK,  Rb = $(round(r_mils.Rb, digits=4)) mK/W,  " *
-        "vD = $(round(r_mils.vD, sigdigits=3)) m/s")
-
-r_mfls = fit_mfls(t, T, q, rb, H, D, T0, Cs, Cf)
-g_mfls = predict(mfls(t, [0.0, 0.0], H, rb, D, r_mfls.k, Cs, Cf, r_mfls.vD), r_mfls.Rb)
-println("MFLS : k = $(round(r_mfls.k, digits=3)) W/mK,  Rb = $(round(r_mfls.Rb, digits=4)) mK/W,  " *
-        "vD = $(round(r_mfls.vD, sigdigits=3)) m/s")
-
-# --- Figure — measured vs fitted -------------------------------------------------------
-fig = Figure(size = (900, 600))
+# Figure — measured vs every fitted model, overlaid for direct comparison.
+fig = Figure()
 ax = Axis(fig[1, 1], title = "TRT model inversion — measured vs fitted mean fluid temperature",
-    xlabel = "Time (s)", ylabel = "Temperature (°C)", xscale = log10)
-scatter!(ax, t, T, color = (:black, 0.4), markersize = 5, label = "Measured")
-lines!(ax, t, g_ils,  linewidth = 2, label = "ILS  (k=$(round(r_ils.k, digits=2)))")
-lines!(ax, t, g_ics,  linewidth = 2, label = "ICS  (k=$(round(r_ics.k, digits=2)))")
-lines!(ax, t, g_fls,  linewidth = 2, label = "FLS  (k=$(round(r_fls.k, digits=2)))")
-lines!(ax, t, g_mils, linewidth = 2, linestyle = :dash, label = "MILS (k=$(round(r_mils.k, digits=2)))")
-lines!(ax, t, g_mfls, linewidth = 2, linestyle = :dot,  label = "MFLS (k=$(round(r_mfls.k, digits=2)))")
-axislegend(ax, position = :rb)
-
-mkpath(joinpath(@__DIR__, "figures"))
-outfile = joinpath(@__DIR__, "figures", "inversion.png")
-save(outfile, fig)
-println("\nSaved figure to $(outfile)")
-# display(fig)   # uncomment for interactive use
+    xlabel = "Time since start of heating (s)", ylabel = "Temperature (°C)")
+scatter!(ax, t, T, color = (:black, 0.4), markersize = 10, label = "Measured")
+lines!(ax, t, T_ils, color = :dodgerblue, linewidth = 2,
+    label = "ILS (k=$(round(ils.params[1], digits=2)))")
+lines!(ax, t, T_ics, color = :seagreen, linewidth = 2,
+    label = "ICS (k=$(round(ics.params[1], digits=2)))")
+lines!(ax, t, T_fls, color = :orange, linewidth = 2,
+    label = "FLS (k=$(round(fls.params[1], digits=2)))")
+lines!(ax, t, T_mils, color = :purple, linestyle = :dash, linewidth = 2,
+    label = "MILS (k=$(round(mils.params[1], digits=2)))")
+lines!(ax, t, T_mfls, color = :firebrick, linestyle = :dot, linewidth = 2,
+    label = "MFLS (k=$(round(mfls.params[1], digits=2)))")
+axislegend(ax, position = :rt)
+display(fig)

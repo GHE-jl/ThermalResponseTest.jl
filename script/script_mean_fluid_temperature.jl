@@ -1,15 +1,13 @@
-"""
-Compare the mean-fluid-temperature averaging methods (p-linear mean of Marcotte & Pasquier 2008)
-on a thermal response test data set.
+# Compare the mean-fluid-temperature averaging methods (p-linear mean of Marcotte & Pasquier 2008)
+# on a thermal response test data set.
 
-Run from the package root:
-    julia --project=script script/script_mean_fluid_temperature.jl
-"""
+import Pkg; Pkg.activate(@__DIR__)
+# Pkg.instantiate() # Once per computer
 
 using ThermalResponseTest
 using CairoMakie
 
-datafile = joinpath(@__DIR__, "..", "trt_data", "DataCL_TRT.csv")
+datafile = joinpath(@__DIR__, "..", "data", "TRT_CL_2Phases.csv")
 df = load_trt_data(datafile)
 
 # Named methods
@@ -40,9 +38,4 @@ for i in eachindex(p)
     lines!(ax2, df.elapsed_time, T_pLinear[:, i], color = (:gray, 0.4), linewidth = 0.5)
 end
 axislegend(ax2, position = :rb)
-
-mkpath(joinpath(@__DIR__, "figures"))
-outfile = joinpath(@__DIR__, "figures", "mean_fluid_temperature.png")
-save(outfile, fig)
-println("Saved figure to $(outfile)")
-# display(fig)   # uncomment for interactive use
+display(fig)

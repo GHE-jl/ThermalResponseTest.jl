@@ -1,0 +1,59 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+# Needed by julia-actions/cache and for the GITHUB_TOKEN-based deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & deploy docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # to push to the gh-pages branch
+      pull-requests: read
+      statuses: write
+    steps:
+      # The GHE-jl packages are unregistered and wired by local [sources] paths (../PackageName.jl).
+      # Check this repository and its dependency chain into a shared workspace so those relative
+      # paths resolve when the docs environment resolves ThermalResponseTest's dependencies.
+      - uses: actions/checkout@v4
+        with:
+          path: ThermalResponseTest.jl
+      - uses: actions/checkout@v4
+        with:
+          repository: GHE-jl/BoreholeResistance.jl
+          path: BoreholeResistance.jl
+      - uses: actions/checkout@v4
+        with:
+          repository: GHE-jl/GroundResponse.jl
+          path: GroundResponse.jl
+      - uses: actions/checkout@v4
+        with:
+          repository: GHE-jl/GroundHeatExchanger.jl
+          path: GroundHeatExchanger.jl
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate docs environment
+        working-directory: ThermalResponseTest.jl
+        run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()'
+      - name: Build and deploy
+        working-directory: ThermalResponseTest.jl
+        run: julia --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

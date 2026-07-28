@@ -83,68 +83,99 @@ function centered_finite_difference(t::AbstractVector{<:Real}, x::AbstractVector
 end
 
 """
-    critical_time(rb, k, Cs)
+    bourdet_derivative(t, T, δ=0.3)
 
-Calculate the critical time (tc) for a borehole thermal response test, which is the time after which
-the infinite line source (ILS) model becomes valid.
+Calculate the time derivative of a vector using the Bourdet et al. (1989) three-point formula,
+adapted from well-test analysis. Instead of the immediate neighbors used by
+[`centered_finite_difference`](@ref), the two points bracketing `t[i]` are taken at a fixed
+natural-log spacing `δ` away (`t[i]·exp(∓δ)`), with the temperature there obtained by linear
+interpolation. This trades a small amount of resolution for robustness to measurement noise and
+uneven sampling, which is often preferable for real (as opposed to synthetic) TRT signals. The
+output is `dT/dt`, the same physical quantity as `centered_finite_difference`, so the two are
+interchangeable wherever a temperature derivative is required. The "logarithmic derivative" 
+`dT/d(ln t) = t·dT/dt` used in Beier (2020) can identify the borehole-dominated/transition/
+steady-flux periods of a TRT.
 # Arguments
-    - `rb`: Borehole radius (m)
-    - `k`: Thermal conductivity of the ground (W/mK)
-    - `Cs`: Volumetric heat capacity of the ground (J/m³K)
+    - `t`: Time vector (s)
+    - `T`: Variable vector (e.g., temperature) corresponding to time vector
+    - `δ`: Natural-log spacing used to pick the bracketing points (default 0.3, following Beier
+        2020, who uses 0.3–0.5). Larger `δ` gives a smoother but less locally-resolved derivative.
 # Output
-    - Critical time (s)
+    - Time derivative of `T` with respect to `t`
+# Reference
+    - Bourdet, D., Ayoub, J.A., Pirard, Y.M., 1989. Use of pressure derivative in well-test
+        interpretation. SPE Form. Eval. 4 (2), 293–302. https://doi.org/10.2118/12777-PA
+    - Beier, R.A., 2020. Deconvolution and convolution methods for thermal response tests on
+        borehole heat exchangers. Geothermics 86, 101786.
+        https://doi.org/10.1016/j.geothermics.2019.101786 (Appendix C)
 """
-function critical_time(rb::Real, k::Real, Cs::Real)
-    return 5 * rb^2 / (k / Cs)
+function bourdet_derivative(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, δ::Real=0.3)
+    n = length(t)
+    t1 = clamp.(t .* exp(-δ), t[1], t[end])
+    t2 = clamp.(t .* exp(δ), t[1], t[end])
+
+    function _linear_interp(t::AbstractVector{<:Real}, x::AbstractVector{<:Real}, tq::Real)
+        j = searchsortedlast(t, tq)
+        j == 0 && return x[1]
+        j == length(t) && return x[end]
+        t[j] == tq && return x[j]
+        w = (tq - t[j]) / (t[j+1] - t[j])
+        return x[j] + w * (x[j+1] - x[j])
+    end
+
+    T1 = _linear_interp.(Ref(t), Ref(T), t1)
+    T2 = _linear_interp.(Ref(t), Ref(T), t2)
+
+    dX1, dX2 = t .- t1, t2 .- t
+    dT1, dT2 = T .- T1, T2 .- T
+
+    dTdt = similar(T, float(eltype(T)))
+    dTdt[1] = dT2[1] / dX2[1]
+    dTdt[n] = dT1[n] / dX1[n]
+    for i in 2:n-1
+        dTdt[i] = (dT1[i] * dX2[i] / dX1[i] + dT2[i] * dX1[i] / dX2[i]) / (dX1[i] + dX2[i])
+    end
+    return dTdt
 end
 
 """
-    residence_time(v, H)
+    residence_time(V̇, H)
     residence_time(V, H, ri)
 
-Calculate the residence time of the fluid in the borehole, which is the time it takes for the fluid to travel down and back up the borehole.
+Calculate the residence time of the fluid in the borehole, which is the time it takes for the fluid
+to travel down and back up the borehole.
 # Arguments
+    - `V̇`: Fluid velocity in the borehole (m/s)
     - `V`: Volumetric flow rate (m³/s)
-    - `v`: Fluid velocity in the borehole (m/s)
     - `H`: Borehole depth (m)
     - `ri`: Inner radius of the borehole (m)
 # Output
     - Residence time (s)
 """
-function residence_time(v::Real, H::Real)
-    return 2 * H / v # Time for fluid to travel down and back up the borehole
+function residence_time(V̇::Real, H::Real)
+    return 2 * H / V̇
 end
 function residence_time(V::Real, H::Real, ri::Real)
     A = π * ri^2 # Cross-sectional area of the borehole
-    v = V / A    # Fluid velocity in the borehole
-    return residence_time(v, H)
+    return residence_time(V / A, H)
 end
 
 """
-    residence_time_indice(t, tr)
-    residence_time_indice(t, v, H)
-    residence_time_indice(t, V, H, ri)
+    critical_time(rb, k, Cs)
 
-Find the index in the time vector `t` that corresponds to the residence time of the fluid in
-the borehole.
+Calculate the ILS critical time `tc = 5 rb² / (k/Cs)`, the Fourier-number threshold (Fo ≳ 5) beyond
+which the infinite line source (and its first-order approximation methods) become valid.
 # Arguments
-    - `t`: Time vector (s)
-    - `tr`: Residence time of the fluid in the borehole (s)
-    - `V`: Volumetric flow rate (m³/s)
-    - `v`: Fluid velocity in the borehole (m/s)
-    - `H`: Borehole depth (m)
-    - `ri`: Inner radius of the borehole (m)
+    - `rb`: Borehole radius (m)
+    - `k`: Ground thermal conductivity (W/mK)
+    - `Cs`: Volumetric heat capacity of the ground (J/m³K)
 # Output
-    - Index in the time vector `t` that corresponds to the residence time `tr`
+    - Critical time (s)
+# Reference
+    - Pasquier, P. (2018). Interpretation of the first hours of a thermal response test using the
+        time derivative of the temperature. Applied Energy, 213, 56–75.
+        https://doi.org/10.1016/j.apenergy.2018.01.022
 """
-function residence_time_indice(t::AbstractVector{<:Real}, tr::Real)
-    return findfirst(x -> x >= tr, t)
-end
-function residence_time_indice(t::AbstractVector{<:Real}, v::Real, H::Real)
-    tr = residence_time(v, H)
-    return residence_time_indice(t, tr)
-end
-function residence_time_indice(t::AbstractVector{<:Real}, V::Real, H::Real, ri::Real)
-    tr = residence_time(V, H, ri)
-    return residence_time_indice(t, tr)
+function critical_time(rb::Real, k::Real, Cs::Real)
+    return 5 * rb^2 / (k / Cs)
 end

@@ -1,7 +1,7 @@
 # ThermalResponseTest.jl
 
 A Julia package to interpret **thermal response tests (TRT)** performed on ground heat exchangers.
-It estimates the **ground thermal conductivity** (and the borehole thermal resistance, and — with
+It estimates the **ground thermal conductivity** (and the effective borehole thermal resistance, and — with
 the moving models — the groundwater Darcy velocity) from a measured TRT, using two complementary
 families of methods:
 
@@ -10,8 +10,9 @@ families of methods:
    derivative of the heating phase.
 2. **Model inversion** — least-squares fitting of any
    [GroundResponse.jl](https://github.com/GHE-jl/GroundResponse.jl) ground model (ILS, ICS,
-   FLS, MILS, MFLS) with [Optimization.jl](https://github.com/SciML/Optimization.jl) (Optim.jl
-   backend), with the ground conductivity as the main unknown.
+   FLS, MILS, MFLS, or a custom `AbstractGroundModel`) with
+   [Optimization.jl](https://github.com/SciML/Optimization.jl) (Optim.jl backend), with the ground
+   conductivity as the main unknown.
 
 `ThermalResponseTest.jl` is the interpretation layer of the GHE-jl ecosystem: it depends on
 [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl), which re-exports
@@ -24,34 +25,35 @@ are built on.
 using ThermalResponseTest
 
 # Load a TRT file [Time, Power (W), T_in (°C), T_out (°C)] and split heating / recovery
-trt     = load_trt_data("trt_data/DataCL_TRT.csv")
+trt     = load_trt_data("data/TRT_CL_2Phases.csv")
 dataset = decompose_trt(trt)
 
 H, rb, Cs = 138.0, 0.075, 2.0e6          # depth [m], radius [m], ground heat capacity [J/m³K]
 
 # --- First-order approximation (ILS, Pasquier 2018) ---
-k_H,  Rb, _, _ = fit_ils_foa_T(dataset.heating, H, rb, Cs)   # heating  (UFOA-T-H)
-k_R,  T0, _, _ = fit_ils_foa_T_recovery(dataset, H)          # recovery (UFOA-T-R)
-k_dH, _,  _    = fit_ils_foa_dT(dataset.heating, 30/60000, H, 0.02)  # derivative (CFOA-Ṫ-H)
+k_H,  Rbₑ, _, _ = fit_ils_foa_T(dataset, H, rb, Cs)          # heating  (UFOA-T-H)
+k_R,  _, _ = fit_ils_foa_T_recovery(dataset, H, rb)          # recovery (UFOA-T-R)
+k_dH, _,  _    = fit_ils_foa_dT(dataset, 30/60000, H, 0.02)  # derivative (CFOA-Ṫ-H)
 
 # --- Model inversion (Optimization.jl + Optim.jl) ---
-res = fit_fls(dataset.heating, H, rb, 4.0, trt.T_mean[1], Cs)   # FLS: res.k, res.Rb
+res = fit_fls(dataset, H, rb, 4.0, trt.T_mean[1], Cs)   # FLS: res.k, res.Rbₑ
 ```
 
 ## Data loading and pre-processing
 
 | Function | Purpose |
 |---|---|
-| `load_trt_data(file; date_format, delim, header)` | Read a TRT CSV `[Time, Power, T_in, T_out]` into a DataFrame; adds `:elapsed_time` [s] and `:T_mean` (p-linear mean) |
-| `decompose_trt(trt, threshold=100.0)` | Split into a `TRTDataset(full_data, heating, cooling)` on a power threshold |
+| `load_trt_data(file; date_format, delim, header, dt_tol, trim_recirculation, threshold)` | Read a TRT CSV `[Time, Power, T_in, T_out]` into a DataFrame; adds `:elapsed_time` [s] and `:T_mean` (arithmetic mean); interpolates non-uniform time steps and trims any pre-heating recirculation phase |
+| `decompose_trt(trt, threshold=100.0)` | Split into a `TRTDataset(data, heating, recovery)` on a power threshold. `heating`/`recovery` also carry `:t_rel`, time rebased to `t = 0` at the start of heating — a recirculation phase logged before heating needs no manual pre-treatment |
 | `mean_fluid_temperature(T_in, T_out, method)` | p-linear mean of Marcotte & Pasquier (2008): `:arithmetic`, `:logarithmic`, `:geometric`, `:harmonic`, `:pLinear`, or a numeric exponent |
-| `centered_finite_difference(t, x)` | Time derivative of a signal (for the derivative methods) |
+| `centered_finite_difference(t, x)` | Time derivative of a signal via simple finite differences |
+| `bourdet_derivative(t, T, δ=0.3)` | Time derivative of a signal, robust to measurement noise (Bourdet et al. 1989); default for the derivative FOA methods |
 | `step_signal(x, n)` | Segment a noisy variable-power signal into `n` constant steps (k-means) |
-| `critical_time`, `residence_time`, `residence_time_indice` | Validity-window helpers for the FOA methods |
+| `critical_time`, `residence_time` | Validity-window helpers for the FOA methods |
 
 ## First-order approximation methods
 
-All three use the infinite line source and are derived in Pasquier (2018). They return the
+All four use the infinite line source and are derived in Pasquier (2018). They return the
 estimated thermal conductivity together with the regression curve and the indices used.
 
 | Function | Method | Phase / quantity | Reference |
@@ -59,15 +61,24 @@ estimated thermal conductivity together with the regression curve and the indice
 | `fit_ils_foa_T` | UFOA-T-H | temperature, heating | Eq. 3 |
 | `fit_ils_foa_T_recovery` | UFOA-T-R | temperature, recovery | Eq. 13 |
 | `fit_ils_foa_dT` | CFOA-Ṫ-H | temperature derivative, heating | Eqs. 8–10 |
+| `fit_ils_foa_dT_recovery` | CFOA-Ṫ-R | temperature derivative, recovery | Eqs. 14–18 |
 
 ```julia
-k, Rb, reg, ind    = fit_ils_foa_T(t, T, q, rb, Cs)          # or fit_ils_foa_T(heating_df, H, rb, Cs)
-k, T0, reg, ind    = fit_ils_foa_T_recovery(t, T, q, t̄)      # or fit_ils_foa_T_recovery(dataset, H)
-k, reg, ind        = fit_ils_foa_dT(t, dT, q, V, H, ri)      # or fit_ils_foa_dT(heating_df, V, H, ri)
+k, Rbₑ, reg, ind = fit_ils_foa_T(t, T, q, rb, T0, Cs)   # or fit_ils_foa_T(dataset, H, rb, Cs)
+k, reg, ind       = fit_ils_foa_T_recovery(t, T, q, rb, t̄)  # or fit_ils_foa_T_recovery(dataset, H, rb)
+k, reg, ind       = fit_ils_foa_dT(t, dT, q, V, H, ri)  # or fit_ils_foa_dT(dataset, V, H, ri)
+k, reg, ind       = fit_ils_foa_dT_recovery(t, dT, q, t̄, V, H, ri)  # or fit_ils_foa_dT_recovery(dataset, V, H, ri)
 ```
 
+`T0` is the undisturbed ground temperature; for the `TRTDataset`-based overload it is taken
+automatically from `dataset.data.T_mean[1]` (see `load_trt_data`). The recovery-phase regression
+does not need it — its intercept estimates T0 directly.
+
 The heating-phase methods are valid only after the critical time `tc = 5 rb²/α`; the derivative
-method is constrained to roughly `[4 tr, 16 tr]` where `tr` is the fluid residence time.
+methods default to the window `[64 tr, 512 tr]` after the start of the respective phase (heating
+or recovery), where `tr` is the fluid residence time — wider than Pasquier's original `[4 tr, 16 tr]`,
+which is often too tight for the derivative's log-log trend to have settled on real (non-synthetic)
+signals. Pass an explicit `tr` or `indices` to override.
 
 ## Model inversion
 
@@ -75,31 +86,48 @@ Each `fit_*` function fits a ground model to the measured mean fluid temperature
 the measured load with the model g-function (Eq. 1 of Pasquier 2018):
 
 ```
-Tf(t) = T0 + Rb·q(t) + Σᵢ (qᵢ − qᵢ₋₁)·g(t − tᵢ₋₁)
+Tf(t) = T0 + Rbₑ·q(t) + Σᵢ (qᵢ − qᵢ₋₁)·g(t − tᵢ₋₁)
 ```
 
-The optimization uses `Optimization.jl` with the `Optim.jl` `Fminbox(LBFGS())` backend and finite
-differences by default; bounds, initial guesses, the optimizer and the AD backend are all keyword
-arguments.
+All five are thin wrappers around the generic [`fit_ground_response`](#fit_ground_response), which
+drives any `AbstractGroundModel` (from GroundResponse.jl, re-exported by GroundHeatExchanger.jl)
+through `ground_response` instead of calling the low-level `ils`/`ics`/`fls`/`mils`/`mfls` g-functions
+directly — so a borefield (`xy` with more than one row), a custom `AbstractGroundModel`, or
+`ground_response`'s `bc`/`solver`/`interp` options are all reachable through the same keyword
+arguments, with no new fitting code required. The optimization uses `Optimization.jl` with the
+`Optim.jl` `Fminbox(LBFGS())` backend and finite differences by default; bounds, initial guesses, the
+optimizer and the AD backend are all keyword arguments.
 
 | Function | Model | Unknowns | Extra inputs |
 |---|---|---|---|
-| `fit_ils` | infinite line source | `k`, `Rb` | `rb, T0, Cs` |
-| `fit_ics` | infinite cylindrical source | `k`, `Rb` | `rb, T0, Cs` |
-| `fit_fls` | finite line source | `k`, `Rb` | `rb, H, D, T0, Cs` |
-| `fit_mils` | moving infinite line source | `k`, `Rb`, `vD` | `rb, T0, Cs, Cf` |
-| `fit_mfls` | moving finite line source | `k`, `Rb`, `vD` | `rb, H, D, T0, Cs, Cf` |
+| `fit_ground_response` | any `AbstractGroundModel` | user-defined + `Rbₑ` | `rb, T0, build_model, p0, lb, ub` |
+| `fit_ils` | infinite line source | `k`, `Rbₑ` | `rb, T0, Cs` |
+| `fit_ics` | infinite cylindrical source | `k`, `Rbₑ` | `rb, T0, Cs` |
+| `fit_fls` | finite line source | `k`, `Rbₑ` | `rb, H, D, T0, Cs` |
+| `fit_mils` | moving infinite line source | `k`, `Rbₑ`, `vD` | `rb, T0, Cs, Cf` |
+| `fit_mfls` | moving finite line source | `k`, `Rbₑ`, `vD` | `rb, H, D, T0, Cs, Cf` |
 
 ```julia
-res = fit_ils(t, T, q, rb, T0, Cs)                 # res.k, res.Rb, res.sol
-res = fit_mfls(t, T, q, rb, H, D, T0, Cs, Cf)       # res.k, res.Rb, res.vD, res.sol
+res = fit_ils(t, T, q, rb, T0, Cs)                 # res.k, res.Rbₑ, res.sol
+res = fit_mfls(t, T, q, rb, H, D, T0, Cs, Cf)       # res.k, res.Rbₑ, res.vD, res.sol
 
-# DataFrame overloads take the (heating) TRT data and a depth H for q = power/H
-res = fit_fls(dataset.heating, H, rb, 4.0, T0, Cs)
+# TRTDataset overloads take the heating phase from `decompose_trt` and a depth H for q = power/H;
+# time is rebased to the start of heating automatically (`:t_rel`), so no manual pre-treatment is
+# needed even if the raw log includes a recirculation phase before heating.
+res = fit_fls(dataset, H, rb, 4.0, T0, Cs)
 ```
 
 > **Note** The superposition forward model assumes **uniformly spaced** time steps (a standard TRT
-> logging rate). The moving models require `vD > 0`.
+> logging rate) and `t` measured **from the start of heating** (`t = 0` the instant the heater turns
+> on, strictly positive). Passing raw vectors directly (rather than through `decompose_trt` /
+> `TRTDataset`) requires trimming or rebasing any recirculation phase first. The moving models
+> require `vD > 0`.
+
+> **Note** Every fit is capped by a `maxtime` keyword (default 30 s). `Fminbox`'s outer barrier loop
+> essentially never reports `Success` for this problem once the finite-difference gradient becomes
+> noise-dominated near the optimum, even though the estimate itself stabilizes in well under a second
+> — so `sol.retcode == Failure` (the `maxtime` cutoff) is expected and does *not* indicate a bad fit.
+> Increase `maxtime` only if you have reason to think a harder problem (e.g. a borefield) needs it.
 
 ## Scripts
 
@@ -110,11 +138,9 @@ julia --project=script -e 'using Pkg; Pkg.instantiate()'
 julia --project=script script/script_first_order_approximation.jl
 ```
 
-Each script saves its figure to `script/figures/`.
-
 | Script | What it shows |
 |---|---|
-| `script_first_order_approximation.jl` | The three FOA methods (heating, recovery, derivative) on a real TRT |
+| `script_first_order_approximation.jl` | The four FOA methods (heating, recovery, derivative on each) on a real TRT |
 | `script_inversion.jl` | Model inversion with all five ground models; measured vs fitted |
 | `script_load_trt.jl` | Loading, decomposition, and plotting of a TRT data file |
 | `script_mean_fluid_temperature.jl` | Comparison of the mean-fluid-temperature averaging methods |
@@ -128,8 +154,6 @@ develop them locally:
 
 ```julia
 using Pkg
-Pkg.develop(path = "../BoreholeResistance.jl")
-Pkg.develop(path = "../GroundResponse.jl")
 Pkg.develop(path = "../GroundHeatExchanger.jl")
 Pkg.develop(path = ".")
 Pkg.instantiate()
@@ -163,3 +187,8 @@ Pkg.instantiate()
 - Marcotte, D., & Pasquier, P. (2008). On the estimation of thermal resistance in borehole thermal
   conductivity test. *Renewable Energy*, 33(11), 2407–2415.
   https://doi.org/10.1016/j.renene.2008.01.021
+- Bourdet, D., Ayoub, J. A., & Pirard, Y. M. (1989). Use of pressure derivative in well-test
+  interpretation. *SPE Formation Evaluation*, 4(2), 293–302. https://doi.org/10.2118/12777-PA
+- Beier, R. A. (2020). Deconvolution and convolution methods for thermal response tests on
+  borehole heat exchangers. *Geothermics*, 86, 101786.
+  https://doi.org/10.1016/j.geothermics.2019.101786

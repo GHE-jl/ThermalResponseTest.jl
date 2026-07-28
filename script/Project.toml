@@ -1,15 +1,12 @@
 [deps]
-BoreholeResistance = "e68eaff3-538a-4178-bf62-7dbf06caf399"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 GroundHeatExchanger = "bd8f68b8-2a15-4d14-8bb6-4cefce65f0ac"
-GroundResponse = "4e068bfd-c84d-4e7d-af33-179ff9550968"
 ThermalResponseTest = "82e3c90c-d826-4d41-a540-35413cb226da"
 
 [sources]
-BoreholeResistance = {path = "../../BoreholeResistance.jl"}
 GroundHeatExchanger = {path = "../../GroundHeatExchanger.jl"}
-GroundResponse = {path = "../../GroundResponse.jl"}
 ThermalResponseTest = {path = ".."}
 
 [compat]
