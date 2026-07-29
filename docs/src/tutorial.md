@@ -6,8 +6,8 @@ function used here is documented in the [API reference](@ref).
 
 ## 1. Loading and decomposing a TRT
 
-A TRT log is a CSV with four columns: time, heating power, inlet and outlet fluid temperature.
-[`load_trt_data`](@ref) reads it, computes the mean fluid temperature, and — by default —
+A TRT log is a CSV with four columns: time (in seconds or as a DateTime format), heating power (in watts), inlet and outlet fluid temperature (in degree Celcius).
+[`load_trt_data`](@ref) reads it, computes the mean fluid temperature, and (by default)
 interpolates non-uniform time steps and trims any recirculation phase logged before heating:
 
 ```julia
@@ -26,20 +26,19 @@ dataset = decompose_trt(trt)   # TRTDataset(data, heating, recovery)
 ```
 
 `dataset.heating` and `dataset.recovery` carry an extra `:t_rel` column, time rebased so that
-`t_rel = 0` at the instant heating starts — every fitting function below expects time measured from
+`t_rel = 0` at the instant heating starts. Every fitting function below expects time measured from
 that instant, so a recirculation phase logged beforehand needs no manual trimming when working
 through a `TRTDataset`.
 
-!!! note "Unconventional tests"
-    [`TRTDataset`](@ref) assumes a single heating phase followed by a single recovery phase. A test
-    with several on/off cycles doesn't fit that shape — interpret it with the vector-based methods
-    below directly on `load_trt_data`'s output instead of through `decompose_trt`.
+>**Note** Unconventional tests:
+>[`TRTDataset`](@ref) assumes a single heating phase followed by a single recovery phase. A test
+>with several on/off cycles doesn't fit that shape — interpret it with the vector-based methods
+>below directly on `load_trt_data`'s output instead of through `decompose_trt`.
 
 ## 2. Mean fluid temperature
 
 [`load_trt_data`](@ref) uses the arithmetic mean by default. [`mean_fluid_temperature`](@ref)
-exposes the full p-linear family of Marcotte & Pasquier (2008) if a different convention is needed
-for the depth-averaged mean:
+exposes the full p-linear family of Marcotte & Pasquier (2008) if a different convention is needed:
 
 ```julia
 T_mean = mean_fluid_temperature(trt.T_in, trt.T_out, :pLinear)   # or :arithmetic, :logarithmic, ...
@@ -58,13 +57,13 @@ k_H, Rbₑ_H, reg, indices = fit_ils_foa_T(dataset, H, rb, Cs)
 
 `T0`, the undisturbed ground temperature needed by the regression's intercept, is taken
 automatically from `dataset.data.T_mean[1]`. `reg` is the fitted `[t, T]` curve over `indices`, handy
-for overlaying on the measured signal.
+for overlaying on the measured signal in visualisation.
 
 ## 4. First-order approximation — recovery phase (UFOA-T-R)
 
 [`fit_ils_foa_T_recovery`](@ref) is the recovery-phase counterpart: it regresses against
-`log(t / (t - t̄))`, where `t̄` is the heating duration. It needs no `T0` — the intercept estimates it
-directly — but does need at least 5 recovery samples:
+`log(t / (t - t̄))`, where `t̄` is the heating duration. It needs no `T0` (the intercept estimates it
+directly) but does need at least 5 recovery samples:
 
 ```julia
 k_R, reg_R, indices_R = fit_ils_foa_T_recovery(dataset, H, rb)
@@ -72,10 +71,10 @@ k_R, reg_R, indices_R = fit_ils_foa_T_recovery(dataset, H, rb)
 
 ## 5. First-order approximation — temperature derivative (CFOA-Ṫ)
 
-The derivative methods regress `log(t) + log(dT/dt)` (heating) or an analogous recovery form,
-restricted to a window expressed in fluid residence times `tr` — by default `[64 tr, 512 tr]`,
-wider than Pasquier's original `[4 tr, 16 tr]` because on real (non-synthetic) signals the
-derivative's log-log trend often hasn't settled onto its asymptotic slope that early. `dT/dt` itself
+The derivative methods regress `log(t) + log(dT/dt)` for heating or an analogous recovery form,
+restricted to a window expressed in fluid residence times `tr` (by default `[64 tr, 512 tr]`,
+wider than Pasquier's original `[4 tr, 16 tr]` because on real signals the
+derivative's log-log trend often hasn't settled onto its asymptotic slope that early). `dT/dt` itself
 can come from two interchangeable estimators:
 
 - [`centered_finite_difference`](@ref) — a plain three-point finite difference.
@@ -99,15 +98,32 @@ methods.
 
 Model inversion fits a full ground-response model to the **entire** measured signal (heating and
 recovery together) by bounded least squares, instead of restricting itself to one phase and one
-closed-form regime. [`fit_ils`](@ref) is the simplest case — the infinite line source, same model
-as the FOA methods, but fit over the whole test:
+closed-form regime. [`fit_ground_response`](@ref) is the generic core: it fits any
+`AbstractGroundModel` (from GroundResponse.jl, re-exported by GroundHeatExchanger.jl) plus `Rbₑ` to
+the measured mean fluid temperature, by superimposing the measured load with the model's g-function
+through `ground_response` (Eq. 1 of Pasquier 2018). Driving the fit through `ground_response` (rather
+than calling a low-level g-function directly) means a borefield (`xy` with more than one
+row), a custom `AbstractGroundModel`, or `ground_response`'s `bc`/`solver`/`interp` options are all
+reachable through the same keyword arguments, with no new fitting code required:
+
+```julia
+using GroundHeatExchanger: ILSModel
+
+res = fit_ground_response(dataset.data.elapsed_time, dataset.data.T_mean, dataset.data.power ./ H,
+    rb, trt.T_mean[1], p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
+```
+
+[`fit_ils`](@ref), [`fit_ics`](@ref), [`fit_fls`](@ref), [`fit_mils`](@ref) and [`fit_mfls`](@ref)
+are thin wrappers around `fit_ground_response`, each building the right model from the unknowns
+being fit. [`fit_ils`](@ref) is the simplest case (the infinite line source, same model as the FOA
+methods) but fit over the whole test:
 
 ```julia
 res = fit_ils(dataset, H, rb, trt.T_mean[1], Cs)
 res.k, res.Rbₑ    # fitted conductivity and effective borehole resistance
 ```
 
-Four more wrappers cover the other `GroundResponse.jl` models — [`fit_ics`](@ref) (infinite
+Four more wrappers cover the other `GroundResponse.jl` models: [`fit_ics`](@ref) (infinite
 cylindrical source), [`fit_fls`](@ref) (finite line source, needs `H` and buried depth `D`), and the
 moving (groundwater-advection) variants [`fit_mils`](@ref) / [`fit_mfls`](@ref), which additionally
 estimate the Darcy velocity `vD`:
@@ -118,17 +134,6 @@ D, Cf = 4.0, 4.2e6                         # buried depth [m], groundwater heat 
 res_fls  = fit_fls(dataset, H, rb, D, trt.T_mean[1], Cs)
 res_mfls = fit_mfls(dataset, H, rb, D, trt.T_mean[1], Cs, Cf)
 res_mfls.k, res_mfls.Rbₑ, res_mfls.vD
-```
-
-All five are thin wrappers around [`fit_ground_response`](@ref), the generic core that drives any
-`AbstractGroundModel` — including a custom one, or a borefield (`xy` with more than one row) — so
-reaching for the generic function directly unlocks options the wrappers don't expose as keywords:
-
-```julia
-using GroundHeatExchanger: ILSModel
-
-res = fit_ground_response(dataset.data.elapsed_time, dataset.data.T_mean, dataset.data.power ./ H,
-    rb, trt.T_mean[1], p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
 ```
 
 See [Model inversion](@ref) for the superposition equation, the optimizer/AD defaults, and why a

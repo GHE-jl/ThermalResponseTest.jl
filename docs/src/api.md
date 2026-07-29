@@ -37,7 +37,3 @@ Modules = [ThermalResponseTest]
 - [`fit_fls`](@ref) — finite line source
 - [`fit_mils`](@ref) — moving infinite line source (groundwater advection)
 - [`fit_mfls`](@ref) — moving finite line source (groundwater advection)
-
-!!! tip "Where the docstrings live"
-    Full signatures and argument lists are rendered inline on [Data & utilities](@ref),
-    [First-order approximation](@ref) and [Model inversion](@ref).

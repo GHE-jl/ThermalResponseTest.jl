@@ -2,8 +2,8 @@
 
 *Interpretation of thermal response tests, in Julia.*
 
-`ThermalResponseTest.jl` turns a measured **thermal response test (TRT)** — power, inlet and
-outlet fluid temperature logged over time on a ground heat exchanger — into the ground and
+`ThermalResponseTest.jl` interpretes a measured **thermal response test (TRT)** (power, inlet and
+outlet fluid temperature logged over time on a ground heat exchanger) to provide the ground and
 borehole properties that govern its long-term thermal performance:
 
 - the **ground thermal conductivity** ``k_s``,
@@ -48,13 +48,13 @@ dataset = decompose_trt(trt)
 
 H, rb, Cs = 138.0, 0.075, 2.0e6          # depth [m], radius [m], ground heat capacity [J/m³K]
 
-# --- First-order approximation (ILS, Pasquier 2018) ---
-k_H, Rbₑ, _, _ = fit_ils_foa_T(dataset, H, rb, Cs)           # heating  (UFOA-T-H)
-k_R,  _,  _    = fit_ils_foa_T_recovery(dataset, H, rb)      # recovery (UFOA-T-R)
+# First-order approximation (ILS, Pasquier 2018)
+k_H, Rbₑ, _, _ = fit_ils_foa_T(dataset, H, rb, Cs)            # heating  (UFOA-T-H)
+k_R,  _,  _    = fit_ils_foa_T_recovery(dataset, H, rb)       # recovery (UFOA-T-R)
 k_dH, _,  _    = fit_ils_foa_dT(dataset, 30 / 60000, H, 0.02) # derivative (CFOA-Ṫ-H)
 
-# --- Model inversion (Optimization.jl + Optim.jl) ---
-res = fit_fls(dataset, H, rb, 4.0, trt.T_mean[1], Cs)   # FLS: res.k, res.Rbₑ
+# Model inversion (Optimization.jl + Optim.jl)
+res = fit_fls(dataset, H, rb, 4.0, trt.T_mean[1], Cs)         # FLS: res.k, res.Rbₑ
 ```
 
 ## Manual outline
@@ -84,11 +84,11 @@ res = fit_fls(dataset, H, rb, 4.0, trt.T_mean[1], Cs)   # FLS: res.k, res.Rbₑ
 | ``t_r`` | Fluid residence time in the borehole | s |
 | ``\bar t`` (`t̄`) | Heating-phase duration | s |
 
-!!! note "Time convention"
-    Every fitting function expects `t` measured **from the start of heating** (`t = 0` the instant
-    the heater turns on, strictly positive, uniformly spaced). [`decompose_trt`](@ref) produces this
-    automatically as `:t_rel`, rebasing away any recirculation phase logged before heating — no
-    manual pre-treatment is needed when working through a `TRTDataset`.
+>**Note** Time convention: 
+>Every fitting function expects `t` measured **from the start of heating** (`t = 0` the instant
+>the heater turns on, strictly positive, uniformly spaced). [`decompose_trt`](@ref) produces this
+>automatically as `:t_rel`, rebasing away any recirculation phase logged before heating. Hence, no
+>manual pre-treatment is needed when working through a `TRTDataset`.
 
 ## Ecosystem
 

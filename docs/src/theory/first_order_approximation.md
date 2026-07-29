@@ -14,9 +14,10 @@ T_f(t) = \frac{q}{4\pi k}\Big[\ln t + \ln\!\big(\tfrac{4k}{C_s r_b^2}\big) - \ga
 
 with ``\gamma`` the Euler–Mascheroni constant. [`fit_ils_foa_T`](@ref) regresses ``T`` against
 ``\ln t`` on the samples past ``t_c`` to get a slope and intercept, recovers `k` from the slope
-(``k = q/(4\pi\,\text{slope})``), and iterates — since ``t_c`` itself depends on `k` — until both
+(``k = q/(4\pi\,\text{slope})``), and iterates (since ``t_c`` itself depends on `k`) until both
 converge. `Rbₑ` then follows directly from the intercept, the fitted slope, and the known `T0`
-(Eq. 3 of Pasquier 2018). `T0` must be supplied; it is not observable from the heating phase alone.
+(Eq. 3 of Pasquier 2018). `T0` must be supplied, it is not observable from the heating phase alone. 
+However, it is defined in this package as the first time step of the heating.
 
 If fewer than 3 points ever fall past the (moving) ``t_c``, the iteration falls back to the last 30%
 of the data and emits a warning rather than failing outright.
@@ -32,8 +33,7 @@ T_f(t) = \frac{q\bar t}{4\pi k}\,\ln\!\left(\frac{t}{t - \bar t}\right) + T_0, \
 ```
 
 [`fit_ils_foa_T_recovery`](@ref) mirrors the heating-phase iteration, offsetting the critical-time
-check by ``\bar t``. Its intercept estimates ``T_0`` directly — a convenient cross-check against the
-value used (or assumed) for the heating-phase fit — so, unlike [`fit_ils_foa_T`](@ref), it takes no
+check by ``\bar t``. Its intercept can estimates ``T_0`` directly, so unlike [`fit_ils_foa_T`](@ref), it takes no
 `T0` argument. `q` here is the **heating-phase mean** power per length, a scalar, not a vector: the
 recovery-phase temperature only depends on the total heat injected, not its detailed time history
 during heating.
@@ -41,25 +41,22 @@ during heating.
 ## Temperature derivative — heating phase (CFOA-Ṫ-H)
 
 Differentiating the heating-phase expression with respect to time removes the additive `T0` and
-`Rbₑ q` terms entirely, leaving a pure power law (Eq. 6 of Pasquier 2018):
+`q \cdot Rbₑ` terms entirely, leaving a pure power law (Eq. 6 of Pasquier 2018):
 
 ```math
 \dot T(t) = \frac{q}{4\pi k\, t}
 ```
 
 [`fit_ils_foa_dT`](@ref) works in log space, ``\ln t + \ln\dot T = \ln\!\big(q/(4\pi k)\big)``,
-averaging the left-hand side over the chosen window to solve for `k` directly — no iteration needed,
+averaging the left-hand side over the chosen window to solve for `k` directly. No iteration are needed,
 since the critical-time dependence on `k` has been eliminated along with the terms it multiplied.
 
 The window is expressed in fluid residence times `tr` rather than the physical critical time,
 capturing the different physics that bounds a derivative fit: too early and the signal is
 contaminated by borehole thermal-mass effects the ILS doesn't model; too late and measurement noise
-dominates a vanishingly small derivative. Pasquier's original window is `[4 tr, 16 tr]`; this
-package defaults to the wider `[64 tr, 512 tr]` because on real (as opposed to synthetic) TRT
-signals, the derivative's log-log trend has often not yet settled onto its asymptotic unit slope by
-`16 tr` — the original window is, in Pasquier's own words, "purely arbitrary," chosen for being
-computable from readily available parameters rather than derived from first principles. Pass an
-explicit `tr` or `indices` to override either window.
+dominates a vanishingly small derivative. Pasquier's original window is `[4 tr, 16 tr]`, while this
+package defaults to a wider `[64 tr, 512 tr]` because on TRT signals, the derivative's log-log trend
+has often not yet settled onto its asymptotic unit slope by `16 tr`. Pass an explicit `tr` or `indices` to override either window.
 
 ## Temperature derivative — recovery phase (CFOA-Ṫ-R)
 

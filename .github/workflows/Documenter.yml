@@ -25,25 +25,31 @@ jobs:
       # The GHE-jl packages are unregistered and wired by local [sources] paths (../PackageName.jl).
       # Check this repository and its dependency chain into a shared workspace so those relative
       # paths resolve when the docs environment resolves ThermalResponseTest's dependencies.
-      - uses: actions/checkout@v4
+      # GroundResponse.jl and GroundHeatExchanger.jl are private, so the sibling checkouts need a
+      # token with cross-repo read access — see secrets.GHEJL_CHECKOUT_TOKEN (falls back to the
+      # default token, which only works while every sibling below is public).
+      - uses: actions/checkout@v7
         with:
           path: ThermalResponseTest.jl
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: GHE-jl/BoreholeResistance.jl
           path: BoreholeResistance.jl
-      - uses: actions/checkout@v4
+          token: ${{ secrets.GHEJL_CHECKOUT_TOKEN || github.token }}
+      - uses: actions/checkout@v7
         with:
           repository: GHE-jl/GroundResponse.jl
           path: GroundResponse.jl
-      - uses: actions/checkout@v4
+          token: ${{ secrets.GHEJL_CHECKOUT_TOKEN || github.token }}
+      - uses: actions/checkout@v7
         with:
           repository: GHE-jl/GroundHeatExchanger.jl
           path: GroundHeatExchanger.jl
-      - uses: julia-actions/setup-julia@v2
+          token: ${{ secrets.GHEJL_CHECKOUT_TOKEN || github.token }}
+      - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.12'
-      - uses: julia-actions/cache@v2
+          version: '1.11'
+      - uses: julia-actions/cache@v3
       - name: Instantiate docs environment
         working-directory: ThermalResponseTest.jl
         run: |

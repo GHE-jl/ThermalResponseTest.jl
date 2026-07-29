@@ -4,4 +4,4 @@ ThermalResponseTest = "82e3c90c-d826-4d41-a540-35413cb226da"
 
 [compat]
 Documenter = "1"
-julia = "1.12"
+julia = "1.11"
