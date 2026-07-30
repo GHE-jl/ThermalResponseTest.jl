@@ -1,5 +1,10 @@
 # ThermalResponseTest.jl
 
+[![CI](https://github.com/GHE-jl/ThermalResponseTest.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/GHE-jl/ThermalResponseTest.jl/actions/workflows/CI.yml)
+[![Docs: dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GHE-jl.github.io/ThermalResponseTest.jl/dev)
+[![Docs: stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://GHE-jl.github.io/ThermalResponseTest.jl/stable)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 A Julia package to interpret **thermal response tests (TRT)** performed on ground heat exchangers.
 It estimates the **ground thermal conductivity** (and the effective borehole thermal resistance, and when using *moving* such as the moving finite line source, the groundwater Darcy velocity) from a measured TRT, using two complementary
 families of methods:
