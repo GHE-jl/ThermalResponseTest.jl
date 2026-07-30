@@ -1,6 +1,6 @@
 name = "ThermalResponseTest"
 uuid = "82e3c90c-d826-4d41-a540-35413cb226da"
-version = "1.0.0-DEV"
+version = "1.0.0"
 authors = ["Gabriel-Dion <dion.gabriel100@gmail.com>"]
 
 [deps]
