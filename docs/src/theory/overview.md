@@ -8,7 +8,7 @@ properties that produced that response.
 ## The forward model
 
 Every method in this package, FOA or inversion, is built on the same superposition of the measured
-load with a ground g-function `g(t)` [°C·m/W] (Eq. 1 of Pasquier 2018):
+load with a ground g-function `g(t)` \[°C·m/W\] (Eq. 1 of Pasquier 2018):
 
 ```math
 T_f(t) = T_0 + q(t)R_b^\ast + \sum_i \big(q_i - q_{i-1}\big)\, g(t - t_{i-1})
