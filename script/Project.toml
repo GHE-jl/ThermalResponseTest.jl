@@ -6,10 +6,10 @@ GroundHeatExchanger = "bd8f68b8-2a15-4d14-8bb6-4cefce65f0ac"
 ThermalResponseTest = "82e3c90c-d826-4d41-a540-35413cb226da"
 
 [sources]
-GroundHeatExchanger = {path = "../../GroundHeatExchanger.jl"}
 ThermalResponseTest = {path = ".."}
 
 [compat]
 CairoMakie = "0.15"
 DataFrames = "1"
+GroundHeatExchanger = "1"
 julia = "1.11"
