@@ -15,7 +15,7 @@ Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
 OptimizationOptimJL = "36348300-93cb-4f02-beb5-3c3902f8871e"
 
 [compat]
-CSV = "0.10"
+CSV = "0.10, 1"
 Clustering = "0.15"
 DataFrames = "1"
 FiniteDiff = "2"
