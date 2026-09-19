@@ -6,7 +6,7 @@ version: 1.0.0
 date-released: 2026-07-30
 url: "https://github.com/GHE-jl/ThermalResponseTest.jl"
 repository-code: "https://github.com/GHE-jl/ThermalResponseTest.jl"
-license: GPL-3.0
+license: AGPL-3.0
 authors:
   - family-names: "Dion"
     given-names: "Gabriel"

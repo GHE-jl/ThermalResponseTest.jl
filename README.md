@@ -152,14 +152,12 @@ julia --project=script script/script_first_order_approximation.jl
 
 ## Installation
 
-The GHE-jl packages are not yet registered. Clone the ecosystem packages side by side and
-develop them locally:
+`ThermalResponseTest.jl` is registered in the General registry, along with its dependencies, so
+they all resolve automatically:
 
 ```julia
 using Pkg
-Pkg.develop(path = "../GroundHeatExchanger.jl")
-Pkg.develop(path = ".")
-Pkg.instantiate()
+Pkg.add("ThermalResponseTest")
 ```
 
 ## Dependencies
