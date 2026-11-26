@@ -5,7 +5,7 @@ Where the first-order approximation linearizes the ILS ground model, model inver
 
 ## The generic core
 
-[`fit_ground_response`](@ref) is the shared engine behind every `fit_*` wrapper on this page. Given
+[`fit_ground_model`](@ref) is the shared engine behind every `fit_*` wrapper on this page. Given
 a `model` function mapping the ground-model unknowns `p` to an `AbstractGroundModel`, it
 minimizes the sum of squared residuals between the measured mean fluid temperature and the
 superposition forward model from [Overview](@ref):
@@ -20,8 +20,8 @@ for the ILS, `[k, vD]` for the moving models) come from `model`. Guessed paramet
 internally. #TODO retype this paragraph. It is unclear.
 
 The convolution `q ∗ gₚ` is evaluated through `GroundHeatExchanger.jl`'s fluid_response() (#TODO confirm, the convolution is in GroundHeatExchanger.jl, not in GroundResponse.jl). So, a borefield (`xy` with more than one row), a
-custom `AbstractGroundModel`, or any of `ground_response`'s `bc`/`solver`/`interp` options are all
-reachable through `fit_ground_response`'s keywords without new fitting code.
+custom `AbstractGroundModel`, or any of `gfunction`'s `bc`/`interp` options are all
+reachable through `fit_ground_model`'s keywords without new fitting code.
 
 ## Optimizer and AD backend
 
@@ -49,7 +49,7 @@ tolerances to tune if a fit needs to trade accuracy for speed.
 
 ## The five model wrappers
 
-Each wrapper below is a thin, few-line adapter around [`fit_ground_response`](@ref): it builds the
+Each wrapper below is a thin, few-line adapter around [`fit_ground_model`](@ref): it builds the
 right `AbstractGroundModel` from `p` and supplies that model's own required geometry.
 
 | Function | Ground model | Unknowns | Extra geometry needed |
@@ -71,7 +71,7 @@ separate.
 ## Functions on this page
 
 ```@docs
-fit_ground_response
+fit_ground_model
 fit_ils
 fit_ics
 fit_fls

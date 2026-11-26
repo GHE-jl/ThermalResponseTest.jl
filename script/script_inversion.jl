@@ -1,4 +1,4 @@
-# Model inversion of a thermal response test using `fit_ground_response` directly, called once per
+# Model inversion of a thermal response test using `fit_ground_model` directly, called once per
 # ground model so it's clear what goes into each one. Every model is fitted by superimposing the
 # measured load with its GroundResponse.jl g-function (Eq. 1 of Pasquier 2018).
 
@@ -28,20 +28,20 @@ T = dataset.data.T_mean
 q = dataset.data.power / H
 
 # Fit each ground model.
-@time ils  = fit_ground_response(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
-@time ics  = fit_ground_response(t, T, q, rb, T0, p -> ICSModel(rb, p[1], Cs), [2.5], [0.2], [7.0])
-@time fls  = fit_ground_response(t, T, q, rb, T0, p -> FLSModel(H, D, p[1], Cs), [2.5], [0.2], [7.0])
-@time mils = fit_ground_response(t, T, q, rb, T0, p -> MILSModel(rb, p[1], Cs, Cf, p[2]),
+@time ils  = fit_ground_model(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
+@time ics  = fit_ground_model(t, T, q, rb, T0, p -> ICSModel(p[1], Cs), [2.5], [0.2], [7.0])
+@time fls  = fit_ground_model(t, T, q, rb, T0, p -> FLSModel(H, D, p[1], Cs), [2.5], [0.2], [7.0])
+@time mils = fit_ground_model(t, T, q, rb, T0, p -> MILSModel(rb, p[1], Cs, Cf, p[2]),
     [2.5, 1e-7], [0.2, 1e-9], [7.0, 1e-5])
-@time mfls = fit_ground_response(t, T, q, rb, T0, p -> MFLSModel(H, rb, D, p[1], Cs, Cf, p[2]),
+@time mfls = fit_ground_model(t, T, q, rb, T0, p -> MFLSModel(H, rb, D, p[1], Cs, Cf, p[2]),
     [2.5, 1e-7], [0.2, 1e-9], [7.0, 1e-5])
 
 # Reconstruct each fitted temperature profile
-T_ils = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], ils.model), T0, ils.Rbₑ)
-T_ics = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], ics.model), T0, ics.Rbₑ)
-T_fls = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], fls.model), T0, fls.Rbₑ)
-T_mils = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], mils.model), T0, mils.Rbₑ)
-T_mfls = fluid_temperature(t, q, ground_response(t, rb, [0.0 0.0], mfls.model), T0, mfls.Rbₑ)
+T_ils = fluid_temperature(t, q, gfunction(t, rb, [0.0 0.0], ils.model), T0, ils.Rbₑ)
+T_ics = fluid_temperature(t, q, gfunction(t, rb, [0.0 0.0], ics.model), T0, ics.Rbₑ)
+T_fls = fluid_temperature(t, q, gfunction(t, rb, [0.0 0.0], fls.model), T0, fls.Rbₑ)
+T_mils = fluid_temperature(t, q, gfunction(t, rb, [0.0 0.0], mils.model), T0, mils.Rbₑ)
+T_mfls = fluid_temperature(t, q, gfunction(t, rb, [0.0 0.0], mfls.model), T0, mfls.Rbₑ)
 
 # Summary table — one row per model.
 rmse(T_fit) = sqrt(sum(abs2, T_fit .- T) / length(T))

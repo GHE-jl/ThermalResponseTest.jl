@@ -11,5 +11,5 @@ ThermalResponseTest = {path = ".."}
 [compat]
 CairoMakie = "0.15"
 DataFrames = "1"
-GroundHeatExchanger = "1"
+GroundHeatExchanger = "2"
 julia = "1.11"

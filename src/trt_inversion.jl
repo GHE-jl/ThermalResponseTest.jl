@@ -26,12 +26,12 @@ function _solve_trt(loss, p0, lb, ub, optimizer, adtype, maxtime, abstol, reltol
 end
 
 """
-    fit_ground_response(t, T, q, rb, T0, build_model, p0, lb, ub;
-        xy, bc, solver, interp, optimizer, adtype, maxtime, abstol, reltol)
+    fit_ground_model(t, T, q, rb, T0, build_model, p0, lb, ub;
+        xy, bc, interp, optimizer, adtype, maxtime, abstol, reltol)
 
 Generic model inversion: fits any `AbstractGroundModel` (from GroundResponse.jl, re-exported by
 GroundHeatExchanger.jl) plus the effective borehole resistance `Rbₑ` to experimental mean fluid
-temperature, by superimposing the measured load with the model's `ground_response` g-function
+temperature, by superimposing the measured load with the model's g-function (`gfunction`)
 (Eq. 1 of Pasquier 2018) and least-squares fitting with `Optimization.jl`. This is the shared core
 behind [`fit_ils`](@ref), [`fit_ics`](@ref), [`fit_fls`](@ref), [`fit_mils`](@ref) and
 [`fit_mfls`](@ref).
@@ -43,15 +43,14 @@ behind [`fit_ils`](@ref), [`fit_ics`](@ref), [`fit_fls`](@ref), [`fit_mils`](@re
     - `T0`: Undisturbed ground temperature [°C]
     - `build_model`: Function mapping the ground-model unknowns `p` to an `AbstractGroundModel`
         (e.g. `p -> ILSModel(p[1], Cs)`); receives `p0`/`lb`/`ub`-sized vectors, i.e. **without**
-        `Rbₑ`, which `fit_ground_response` always appends as the last decision variable, with its
+        `Rbₑ`, which `fit_ground_model` always appends as the last decision variable, with its
         initial guess fixed to 0.1 mK/W and bounds fixed to `[0.0, 0.5]`
     - `p0`, `lb`, `ub`: Initial guess / bounds for the ground-model unknowns only (not `Rbₑ`)
 # Keywords
     - `xy`: Borehole coordinates (nb x 2) [m] (default: a single borehole at the origin [0.0 0.0])
-    - `bc`, `solver`: Forwarded to `ground_response` (boundary condition and solver backend; ignored
-        for a single borehole)
-    - `interp`: Forwarded to `ground_response` (default `true`: sub-sample onto an internal ~100-node
-        grid and PCHIP-interpolate, see `ground_response`; pass `false` to evaluate exactly at `t`)
+    - `bc`: Forwarded to `gfunction` (boundary condition; ignored for a single borehole)
+    - `interp`: Forwarded to `gfunction` (default `true`: sub-sample onto an internal ~100-node
+        grid and PCHIP-interpolate, see `gfunction`; pass `false` to evaluate exactly at `t`)
     - `optimizer`: Optim.jl optimizer (default `Fminbox(LBFGS())`)
     - `adtype`: Optimization.jl AD backend (default `AutoFiniteDiff()`)
     - `maxtime`: Wall-clock cap in seconds (default 30) for the underlying `solve` — a safety
@@ -62,10 +61,10 @@ behind [`fit_ils`](@ref), [`fit_ics`](@ref), [`fit_fls`](@ref), [`fit_mils`](@re
     - `(params, Rbₑ, model, sol)`: fitted ground-model unknowns, effective borehole resistance, the
         resulting `AbstractGroundModel`, and the optimization solution.
 """
-function fit_ground_response(t::AbstractVector{<:Real}, T::AbstractVector{<:Real},
+function fit_ground_model(t::AbstractVector{<:Real}, T::AbstractVector{<:Real},
     q::AbstractVector{<:Real}, rb::Real, T0::Real, model::Function,
     p0::AbstractVector{<:Real}, lb::AbstractVector{<:Real}, ub::AbstractVector{<:Real};
-    xy::AbstractMatrix{<:Real} = [0.0 0.0], bc::Symbol = :II, solver::Symbol = :successive,
+    xy::AbstractMatrix{<:Real} = [0.0 0.0], bc::Symbol = :II,
     interp::Bool = true, optimizer = _DEFAULT_OPT, adtype = _DEFAULT_AD,
     maxtime::Real = _DEFAULT_MAXTIME, abstol::Union{Real, Nothing} = nothing,
     reltol::Union{Real, Nothing} = nothing)
@@ -81,7 +80,7 @@ function fit_ground_response(t::AbstractVector{<:Real}, T::AbstractVector{<:Real
     function loss(p, _)
         m = model(p[1:n])
         Rbₑ = p[n + 1]
-        g = ground_response(tF, rb, xy, m; bc, solver, interp)
+        g = gfunction(tF, rb, xy, m; bc, interp)
         return sum(abs2, fluid_temperature(tF, qF, g, T0, Rbₑ) .- TF)
     end
 
@@ -98,15 +97,15 @@ end
 
 Invert a thermal response test with the infinite line source (ILS) model, estimating the ground
 thermal conductivity `k` and the effective borehole thermal resistance `Rbₑ`. Thin wrapper around
-[`fit_ground_response`](@ref) with an `ILSModel`; see its docstring for the shared arguments/keywords
-(`xy`, `bc`, `solver`, `interp`, `optimizer`, `adtype`, `maxtime`, `abstol`, `reltol`).
+[`fit_ground_model`](@ref) with an `ILSModel`; see its docstring for the shared arguments/keywords
+(`xy`, `bc`, `interp`, `optimizer`, `adtype`, `maxtime`, `abstol`, `reltol`).
 
 **Important**: `t` must be measured from the start of the heating phase (`t = 0` the instant the
 heater turns on) and be strictly positive and uniformly spaced. If the raw log includes a
 recirculation phase before heating, either trim it first or use the `TRTDataset`-based method below,
 which rebases time automatically via [`decompose_trt`](@ref).
 # Arguments
-    - `t`, `T`, `q`, `rb`, `T0`: see [`fit_ground_response`](@ref)
+    - `t`, `T`, `q`, `rb`, `T0`: see [`fit_ground_model`](@ref)
     - `Cs`: Volumetric heat capacity of the ground [J/m³K]
     - `dataset`: `TRTDataset` from `decompose_trt` — `t`/`T`/`q` are taken from `dataset.data`, the
         full test (heating *and* recovery, already rebased/trimmed by `load_trt_data`); since the
@@ -122,7 +121,7 @@ which rebases time automatically via [`decompose_trt`](@ref).
 """
 function fit_ils(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, q::AbstractVector{<:Real},
     rb::Real, T0::Real, Cs::Real; k0::Real = 2.5, lb::Real = 0.2, ub::Real = 7.0, kwargs...)
-    r = fit_ground_response(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [k0], [lb], [ub]; kwargs...)
+    r = fit_ground_model(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [k0], [lb], [ub]; kwargs...)
     return (k = r.params[1], Rbₑ = r.Rbₑ, sol = r.sol)
 end
 function fit_ils(dataset::TRTDataset, H::Real, rb::Real, T0::Real, Cs::Real; kwargs...)
@@ -136,14 +135,14 @@ end
 
 Invert a thermal response test with the infinite cylindrical source (ICS) model (cylinder radius
 taken as the borehole radius `rb`), estimating `k` and `Rbₑ`. Thin wrapper around
-[`fit_ground_response`](@ref) with an `ICSModel`. See [`fit_ils`](@ref) for the argument and keyword
+[`fit_ground_model`](@ref) with an `ICSModel`. See [`fit_ils`](@ref) for the argument and keyword
 conventions.
 # Output
     - `(k, Rbₑ, sol)`
 """
 function fit_ics(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, q::AbstractVector{<:Real},
     rb::Real, T0::Real, Cs::Real; k0::Real = 2.5, lb::Real = 0.2, ub::Real = 7.0, kwargs...)
-    r = fit_ground_response(t, T, q, rb, T0, p -> ICSModel(rb, p[1], Cs), [k0], [lb], [ub]; kwargs...)
+    r = fit_ground_model(t, T, q, rb, T0, p -> ICSModel(p[1], Cs), [k0], [lb], [ub]; kwargs...)
     return (k = r.params[1], Rbₑ = r.Rbₑ, sol = r.sol)
 end
 function fit_ics(dataset::TRTDataset, H::Real, rb::Real, T0::Real, Cs::Real; kwargs...)
@@ -157,7 +156,7 @@ end
 
 Invert a thermal response test with the finite line source (FLS) model, estimating `k` and `Rbₑ`.
 The FLS additionally needs the borehole depth `H` and buried depth `D`. Thin wrapper around
-[`fit_ground_response`](@ref) with an `FLSModel`. See [`fit_ils`](@ref) for the remaining argument
+[`fit_ground_model`](@ref) with an `FLSModel`. See [`fit_ils`](@ref) for the remaining argument
 and keyword conventions.
 # Output
     - `(k, Rbₑ, sol)`
@@ -165,7 +164,7 @@ and keyword conventions.
 function fit_fls(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, q::AbstractVector{<:Real},
     rb::Real, H::Real, D::Real, T0::Real, Cs::Real;
     k0::Real = 2.5, lb::Real = 0.2, ub::Real = 7.0, kwargs...)
-    r = fit_ground_response(t, T, q, rb, T0, p -> FLSModel(H, D, p[1], Cs), [k0], [lb], [ub]; kwargs...)
+    r = fit_ground_model(t, T, q, rb, T0, p -> FLSModel(H, D, p[1], Cs), [k0], [lb], [ub]; kwargs...)
     return (k = r.params[1], Rbₑ = r.Rbₑ, sol = r.sol)
 end
 function fit_fls(dataset::TRTDataset, H::Real, rb::Real, D::Real, T0::Real, Cs::Real; kwargs...)
@@ -180,8 +179,8 @@ end
 Invert a thermal response test with the moving infinite line source (MILS) model, estimating the
 ground thermal conductivity `k`, the effective borehole resistance `Rbₑ` **and the Darcy velocity
 `vD`** of the groundwater flow. The model is evaluated at the borehole wall (circumferential-average
-branch, like `ground_response`). Requires the groundwater volumetric heat capacity `Cf`. Thin wrapper
-around [`fit_ground_response`](@ref) with a `MILSModel`. See [`fit_ils`](@ref) for the shared
+branch, like `gfunction`). Requires the groundwater volumetric heat capacity `Cf`. Thin wrapper
+around [`fit_ground_model`](@ref) with a `MILSModel`. See [`fit_ils`](@ref) for the shared
 argument/keyword conventions.
 # Keywords
     - `k0`, `vD0`: Initial guesses for `[k, vD]` (default `2.5`, `1e-7` m/s)
@@ -193,7 +192,7 @@ function fit_mils(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, q::Abstr
     rb::Real, T0::Real, Cs::Real, Cf::Real;
     k0::Real = 2.5, vD0::Real = 1e-7, lb = [0.2, 1e-9], ub = [7.0, 1e-5], kwargs...)
     build = p -> MILSModel(rb, p[1], Cs, Cf, p[2])
-    r = fit_ground_response(t, T, q, rb, T0, build, [k0, vD0], lb, ub; kwargs...)
+    r = fit_ground_model(t, T, q, rb, T0, build, [k0, vD0], lb, ub; kwargs...)
     return (k = r.params[1], Rbₑ = r.Rbₑ, vD = r.params[2], sol = r.sol)
 end
 function fit_mils(dataset::TRTDataset, H::Real, rb::Real, T0::Real, Cs::Real, Cf::Real; kwargs...)
@@ -207,7 +206,7 @@ end
 
 Invert a thermal response test with the moving finite line source (MFLS) model, estimating `k`,
 `Rbₑ` **and the Darcy velocity `vD`**. Combines the finite-depth geometry (`H`, `D`) with groundwater
-advection (`Cf`, `vD`). Thin wrapper around [`fit_ground_response`](@ref) with a `MFLSModel`. See
+advection (`Cf`, `vD`). Thin wrapper around [`fit_ground_model`](@ref) with a `MFLSModel`. See
 [`fit_mils`](@ref) for the keyword conventions.
 # Output
     - `(k, Rbₑ, vD, sol)`
@@ -216,7 +215,7 @@ function fit_mfls(t::AbstractVector{<:Real}, T::AbstractVector{<:Real}, q::Abstr
     rb::Real, H::Real, D::Real, T0::Real, Cs::Real, Cf::Real;
     k0::Real = 2.5, vD0::Real = 1e-7, lb = [0.2, 1e-9], ub = [7.0, 1e-5], kwargs...)
     build = p -> MFLSModel(H, rb, D, p[1], Cs, Cf, p[2])
-    r = fit_ground_response(t, T, q, rb, T0, build, [k0, vD0], lb, ub; kwargs...)
+    r = fit_ground_model(t, T, q, rb, T0, build, [k0, vD0], lb, ub; kwargs...)
     return (k = r.params[1], Rbₑ = r.Rbₑ, vD = r.params[2], sol = r.sol)
 end
 function fit_mfls(dataset::TRTDataset, H::Real, rb::Real, D::Real, T0::Real, Cs::Real, Cf::Real;

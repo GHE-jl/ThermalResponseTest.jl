@@ -20,8 +20,8 @@ families of methods:
 
 `ThermalResponseTest.jl` is the interpretation layer of the GHE-jl ecosystem: it depends on
 [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl), which re-exports
-the GroundResponse.jl ground models and the temporal-superposition `convolution` that the inversions
-are built on.
+the GroundResponse.jl ground models and provides the spatial superposition `gfunction` and the
+temporal-superposition `convolution` that the inversions are built on.
 
 ## Quick start
 
@@ -86,28 +86,28 @@ signals. Pass an explicit `tr` or `indices` to override.
 
 ## Model inversion
 
-`fit_ground_response` is the generic core inversion: it fits any `AbstractGroundModel` (from GroundResponse.jl,
+`fit_ground_model` is the generic core inversion: it fits any `AbstractGroundModel` (from GroundResponse.jl,
 re-exported by GroundHeatExchanger.jl) plus `Rbₑ` to the measured mean fluid temperature, by
-superimposing the measured load with the model's g-function through `ground_response` (Eq. 1 of
+superimposing the measured load with the model's g-function through `gfunction` (Eq. 1 of
 Pasquier 2018):
 
 ```
 Tf(t) = T0 + q(t)·Rbₑ + Σᵢ (qᵢ − qᵢ₋₁)·g(t − tᵢ₋₁)
 ```
 
-Driving the fit through `ground_response` (rather than calling the low-level
+Driving the fit through `gfunction` (rather than calling the low-level
 `ils`/`ics`/`fls`/`mils`/`mfls` g-functions directly) means a borefield (`xy` with more than one row),
-a custom `AbstractGroundModel`, or `ground_response`'s `bc`/`solver`/`interp` options are all reachable
+a custom `AbstractGroundModel`, or `gfunction`'s `bc`/`interp` options are all reachable
 through the same keyword arguments, with no new fitting code required.
 
 The optimization itself uses `Optimization.jl` with the `Optim.jl` `Fminbox(LBFGS())` backend and finite differences by default. Bounds, initial guesses, the optimizer and the AD backend are all keyword arguments.
 
 `fit_ils`, `fit_ics`, `fit_fls`, `fit_mils` and `fit_mfls` are thin wrappers around
-`fit_ground_response`, each building the right model from the unknowns being fit:
+`fit_ground_model`, each building the right model from the unknowns being fit:
 
 | Function | Model | Unknowns | Extra inputs |
 |---|---|---|---|
-| `fit_ground_response` | any `AbstractGroundModel` | user-defined + `Rbₑ` | `rb, T0, model, p0, lb, ub` |
+| `fit_ground_model` | any `AbstractGroundModel` | user-defined + `Rbₑ` | `rb, T0, model, p0, lb, ub` |
 | `fit_ils` | infinite line source | `k`, `Rbₑ` | `rb, T0, Cs` |
 | `fit_ics` | infinite cylindrical source | `k`, `Rbₑ` | `rb, T0, Cs` |
 | `fit_fls` | finite line source | `k`, `Rbₑ` | `rb, H, D, T0, Cs` |
@@ -117,7 +117,7 @@ The optimization itself uses `Optimization.jl` with the `Optim.jl` `Fminbox(LBFG
 ```julia
 using GroundHeatExchanger: ILSModel
 
-res = fit_ground_response(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
+res = fit_ground_model(t, T, q, rb, T0, p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
 res = fit_ils(t, T, q, rb, T0, Cs)
 res = fit_mfls(t, T, q, rb, H, D, T0, Cs, Cf)
 res = fit_fls(dataset, H, rb, 4.0, T0, Cs)        # TRTDataset overloads
@@ -166,7 +166,7 @@ Pkg.add("ThermalResponseTest")
 
 | Package | Used for |
 |---|---|
-| [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl) | Ground models (re-exported from GroundResponse.jl) and temporal-superposition `convolution` |
+| [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl) | Ground models (re-exported from GroundResponse.jl), spatial superposition `gfunction` and temporal-superposition `convolution` |
 | [Optimization.jl](https://github.com/SciML/Optimization.jl) / [OptimizationOptimJL.jl](https://github.com/SciML/Optimization.jl) | Bounded least-squares model inversion |
 | [FiniteDiff.jl](https://github.com/JuliaDiff/FiniteDiff.jl) | Finite-difference gradients for the inversion |
 | [CSV.jl](https://github.com/JuliaData/CSV.jl) / [DataFrames.jl](https://github.com/JuliaData/DataFrames.jl) | TRT data loading and handling |

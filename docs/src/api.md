@@ -31,7 +31,7 @@ Modules = [ThermalResponseTest]
 
 ### Model inversion wrappers
 
-- [`fit_ground_response`](@ref) — generic core, any `AbstractGroundModel`
+- [`fit_ground_model`](@ref) — generic core, any `AbstractGroundModel`
 - [`fit_ils`](@ref) — infinite line source
 - [`fit_ics`](@ref) — infinite cylindrical source
 - [`fit_fls`](@ref) — finite line source

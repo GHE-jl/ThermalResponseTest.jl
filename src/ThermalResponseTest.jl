@@ -27,7 +27,7 @@ export fit_ils_foa_dT          # CFOA-Ṫ-H : temperature derivative, heating ph
 export fit_ils_foa_dT_recovery # CFOA-Ṫ-R : temperature derivative, recovery phase (Eqs. 14–18)
 
 # Model inversion (Optimization.jl + Optim.jl), ground conductivity as main unknown
-export fit_ground_response                       # generic core (any AbstractGroundModel)
+export fit_ground_model                       # generic core (any AbstractGroundModel)
 export fit_ils, fit_ics, fit_fls, fit_mils, fit_mfls
 
 # Variable-power segmentation

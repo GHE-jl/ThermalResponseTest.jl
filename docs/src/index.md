@@ -21,9 +21,9 @@ Two complementary families of interpretation methods are provided:
 
 `ThermalResponseTest.jl` is the interpretation layer of the GHE-jl ecosystem. It depends on
 [GroundHeatExchanger.jl](https://github.com/GHE-jl/GroundHeatExchanger.jl), which re-exports the
-[GroundResponse.jl](https://github.com/GHE-jl/GroundResponse.jl) ground models and the
-temporal-superposition `convolution` that both the model inversions and the synthetic tests in this
-package's test suite are built on.
+[GroundResponse.jl](https://github.com/GHE-jl/GroundResponse.jl) ground models and provides the
+spatial superposition `gfunction` and the temporal-superposition `convolution` that both the
+model inversions and the synthetic tests in this package's test suite are built on.
 
 ## Installation
 

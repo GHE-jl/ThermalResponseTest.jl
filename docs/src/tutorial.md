@@ -98,23 +98,23 @@ methods.
 
 Model inversion fits a full ground-response model to the **entire** measured signal (heating and
 recovery together) by bounded least squares, instead of restricting itself to one phase and one
-closed-form regime. [`fit_ground_response`](@ref) is the generic core: it fits any
+closed-form regime. [`fit_ground_model`](@ref) is the generic core: it fits any
 `AbstractGroundModel` (from GroundResponse.jl, re-exported by GroundHeatExchanger.jl) plus `Rbₑ` to
 the measured mean fluid temperature, by superimposing the measured load with the model's g-function
-through `ground_response` (Eq. 1 of Pasquier 2018). Driving the fit through `ground_response` (rather
+through `gfunction` (Eq. 1 of Pasquier 2018). Driving the fit through `gfunction` (rather
 than calling a low-level g-function directly) means a borefield (`xy` with more than one
-row), a custom `AbstractGroundModel`, or `ground_response`'s `bc`/`solver`/`interp` options are all
+row), a custom `AbstractGroundModel`, or `gfunction`'s `bc`/`interp` options are all
 reachable through the same keyword arguments, with no new fitting code required:
 
 ```julia
 using GroundHeatExchanger: ILSModel
 
-res = fit_ground_response(dataset.data.elapsed_time, dataset.data.T_mean, dataset.data.power ./ H,
+res = fit_ground_model(dataset.data.elapsed_time, dataset.data.T_mean, dataset.data.power ./ H,
     rb, trt.T_mean[1], p -> ILSModel(p[1], Cs), [2.5], [0.2], [7.0])
 ```
 
 [`fit_ils`](@ref), [`fit_ics`](@ref), [`fit_fls`](@ref), [`fit_mils`](@ref) and [`fit_mfls`](@ref)
-are thin wrappers around `fit_ground_response`, each building the right model from the unknowns
+are thin wrappers around `fit_ground_model`, each building the right model from the unknowns
 being fit. [`fit_ils`](@ref) is the simplest case (the infinite line source, same model as the FOA
 methods) but fit over the whole test:
 

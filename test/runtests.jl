@@ -35,10 +35,10 @@ using Test
         @test isapprox(res.Rbₑ, Rbₑ_true; atol = 0.01)
     end
 
-    @testset "fit_ground_response — equivalence with the fit_ils wrapper" begin
-        # fit_ils is a thin wrapper around fit_ground_response with an ILSModel; both must agree.
+    @testset "fit_ground_model — equivalence with the fit_ils wrapper" begin
+        # fit_ils is a thin wrapper around fit_ground_model with an ILSModel; both must agree.
         res_direct = fit_ils(t, T, q, rb, T0, Cs)
-        res_generic = fit_ground_response(t, T, q, rb, T0, p -> ILSModel(p[1], Cs),
+        res_generic = fit_ground_model(t, T, q, rb, T0, p -> ILSModel(p[1], Cs),
             [2.5], [0.2], [7.0])
         @test isapprox(res_direct.k, res_generic.params[1]; rtol = 1e-6)
         @test isapprox(res_direct.Rbₑ, res_generic.Rbₑ; rtol = 1e-6)
